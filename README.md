@@ -4,7 +4,7 @@ Electron 桌面壳，嵌入官方 [`@deepseek-ai/dsh`](https://www.npmjs.com/pac
 
 ## 下载
 
-- [Windows x64 安装包](https://github.com/hezihua/dsh-desktop/releases/latest/download/dsh-desktop-win-x64.exe)
+- [Windows x64 安装包](https://github.com/hezihua/dsh-desktop/releases/latest/download/dsh-desktop-win32-x64.exe)
 - [全部版本](https://github.com/hezihua/dsh-desktop/releases)
 
 安装包由 GitHub Actions 在 Windows 上构建。体积较大（内含完整 `@deepseek-ai/dsh`）。没装 Node 时会尝试用 Electron 内置 Node 启动引擎。

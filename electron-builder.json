@@ -21,7 +21,7 @@
     }
   ],
   "win": {
-    "artifactName": "${productName}-${platform}-${arch}.${ext}",
+    "artifactName": "${productName}-win32-${arch}.${ext}",
     "signAndEditExecutable": false,
     "target": [
       {
