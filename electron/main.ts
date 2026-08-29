@@ -1,94 +1,87 @@
-import { app, BrowserWindow, Menu, ipcMain, shell } from 'electron'
+import { app, Menu, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
 import { HarnessServer, resolveDshVersion } from './harness'
-import { TITLEBAR_CSS, TITLEBAR_JS } from './titlebar-inject'
 import { checkForUpdatesLater, setupAutoUpdater } from './updater'
+import { DesktopShell } from './window'
 
-type HarnessPhase = 'starting' | 'ready' | 'error'
+const CRASH_RESTARTS = 3
 
-let mainWindow: BrowserWindow | null = null
+const shell = new DesktopShell()
 let harness: HarnessServer | null = null
 let quitting = false
 let lastError = ''
-let harnessPhase: HarnessPhase = 'starting'
+let harnessPhase: 'starting' | 'ready' | 'error' = 'starting'
 let harnessMessage = '正在启动 DeepSeek Harness…'
+let crashRestarts = 0
+let booting = false
 
-const LOOPBACK_ORIGIN = /^http:\/\/127\.0\.0\.1:\d+/
-
-function sendToRenderer(channel: string, payload?: unknown) {
-	if (!mainWindow || mainWindow.isDestroyed()) return
-	mainWindow.webContents.send(channel, payload)
-}
-
-function publishStatus(phase: HarnessPhase, message: string) {
+function publishStatus(phase: 'starting' | 'ready' | 'error', message: string) {
 	harnessPhase = phase
 	harnessMessage = message
-	sendToRenderer('harness:status', { phase, message, url: harness?.url || undefined })
+	const win = shell.window
+	if (!win || win.isDestroyed()) return
+	win.webContents.send('harness:status', { phase, message, url: harness?.url || undefined })
 }
 
-function loadSplash() {
-	if (!mainWindow || mainWindow.isDestroyed()) return
-	if (process.env.VITE_DEV_SERVER_URL) {
-		void mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
+async function bootAndNavigate() {
+	if (booting) return
+	booting = true
+	lastError = ''
+	publishStatus('starting', '正在启动 DeepSeek Harness…')
+	shell.hideHarness()
+
+	try {
+		if (harness) await harness.stop()
+		harness = new HarnessServer({
+			appPath: app.getAppPath(),
+			logDir: join(app.getPath('userData'), 'logs'),
+			onUnexpectedExit: (code, signal) => {
+				if (quitting) return
+				void recoverHarness(code, signal)
+			},
+		})
+		const url = await harness.startWithRetry()
+		crashRestarts = 0
+		log.info(`Harness 已就绪：${url}${harness.owned ? '' : '（附着）'}`)
+		publishStatus('ready', url)
+		shell.showHarness(url)
+	} finally {
+		booting = false
+	}
+}
+
+async function recoverHarness(code: number | null, signal: NodeJS.Signals | null) {
+	if (quitting || booting) return
+	shell.hideHarness()
+	crashRestarts += 1
+	if (crashRestarts > CRASH_RESTARTS) {
+		const message = `Harness 多次退出（code ${String(code)}, signal ${String(signal)}）`
+		lastError = message
+		publishStatus('error', message)
 		return
 	}
-	void mainWindow.loadFile(join(__dirname, '../dist/index.html'))
+	publishStatus('starting', `引擎退出，正在第 ${crashRestarts} 次拉起…`)
+	try {
+		await bootAndNavigate()
+	} catch (error) {
+		lastError = error instanceof Error ? error.message : String(error)
+		publishStatus('error', lastError)
+	}
 }
 
-function createWindow() {
-	const win = new BrowserWindow({
-		width: 1280,
-		height: 840,
-		minWidth: 960,
-		minHeight: 640,
-		show: false,
-		frame: false,
-		autoHideMenuBar: true,
-		backgroundColor: '#10141a',
-		title: 'DeepSeek Harness',
-		webPreferences: {
-			preload: join(__dirname, 'preload.js'),
-			contextIsolation: true,
-			nodeIntegration: false,
-			sandbox: true,
-			webSecurity: true,
-		},
-	})
-	mainWindow = win
-
-	const sendMaximized = () => {
-		if (win.isDestroyed()) return
-		win.webContents.send('window:maximized', win.isMaximized())
+async function restartHarness() {
+	try {
+		crashRestarts = 0
+		lastError = ''
+		publishStatus('starting', '正在重新启动 DeepSeek Harness…')
+		if (harness?.owned) await harness.stop()
+		await bootAndNavigate()
+	} catch (error) {
+		lastError = error instanceof Error ? error.message : String(error)
+		publishStatus('error', lastError)
 	}
-	win.on('maximize', sendMaximized)
-	win.on('unmaximize', sendMaximized)
-
-	win.webContents.on('did-finish-load', () => {
-		const url = win.webContents.getURL()
-		if (!LOOPBACK_ORIGIN.test(url)) return
-		void win.webContents.insertCSS(TITLEBAR_CSS)
-		void win.webContents.executeJavaScript(TITLEBAR_JS)
-	})
-
-	win.webContents.setWindowOpenHandler(({ url }) => {
-		if (/^https?:/.test(url)) void shell.openExternal(url)
-		return { action: 'deny' }
-	})
-
-	win.webContents.on('will-navigate', (event, url) => {
-		if (url.startsWith('file:') || LOOPBACK_ORIGIN.test(url)) return
-		if (process.env.VITE_DEV_SERVER_URL && url.startsWith(process.env.VITE_DEV_SERVER_URL)) return
-		event.preventDefault()
-		if (/^https?:/.test(url)) void shell.openExternal(url)
-	})
-
-	win.once('ready-to-show', () => {
-		win.show()
-	})
-	loadSplash()
-	return win
 }
 
 function installMenu() {
@@ -101,8 +94,11 @@ function installMenu() {
 				{
 					label: '检查更新',
 					click: () => {
+						const win = shell.window
 						if (!app.isPackaged) {
-							sendToRenderer('update:error', { message: '开发模式下不支持自动更新检查（请打包后测试）。' })
+							win?.webContents.send('update:error', {
+								message: '开发模式下不支持自动更新检查（请打包后测试）。',
+							})
 							return
 						}
 						void autoUpdater.checkForUpdates()
@@ -125,44 +121,6 @@ function installMenu() {
 	Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-async function bootAndNavigate() {
-	lastError = ''
-	publishStatus('starting', '正在启动 DeepSeek Harness…')
-
-	harness = new HarnessServer({
-		appPath: app.getAppPath(),
-		logDir: join(app.getPath('userData'), 'logs'),
-		onUnexpectedExit: (code, signal) => {
-			if (quitting) return
-			const message = `Harness 意外退出（code ${String(code)}, signal ${String(signal)}）`
-			lastError = message
-			publishStatus('error', message)
-			if (mainWindow && !mainWindow.isDestroyed() && LOOPBACK_ORIGIN.test(mainWindow.webContents.getURL())) {
-				loadSplash()
-			}
-		},
-	})
-
-	const url = await harness.start()
-	log.info(`Harness 已就绪：${url}`)
-	publishStatus('ready', url)
-	if (mainWindow && !mainWindow.isDestroyed()) {
-		await mainWindow.loadURL(url)
-	}
-}
-
-async function restartHarness() {
-	try {
-		lastError = ''
-		if (mainWindow && !mainWindow.isDestroyed()) loadSplash()
-		if (harness?.running) await harness.stop()
-		await bootAndNavigate()
-	} catch (error) {
-		lastError = error instanceof Error ? error.message : String(error)
-		publishStatus('error', lastError)
-	}
-}
-
 function registerIpc() {
 	ipcMain.handle('desktop:get-info', () => ({
 		appVersion: app.getVersion(),
@@ -178,23 +136,23 @@ function registerIpc() {
 		await restartHarness()
 		return { ok: true }
 	})
-	ipcMain.handle('desktop:quit', () => {
-		app.quit()
-		return { ok: true }
+	ipcMain.handle('desktop:set-overlay', (_event, visible: boolean) => {
+		shell.setOverlay(Boolean(visible))
 	})
 	ipcMain.handle('window:minimize', () => {
-		mainWindow?.minimize()
+		shell.window?.minimize()
 	})
 	ipcMain.handle('window:maximize', () => {
-		if (!mainWindow || mainWindow.isDestroyed()) return
-		if (mainWindow.isMaximized()) mainWindow.unmaximize()
-		else mainWindow.maximize()
+		const win = shell.window
+		if (!win || win.isDestroyed()) return
+		if (win.isMaximized()) win.unmaximize()
+		else win.maximize()
 	})
 	ipcMain.handle('window:close', () => {
-		mainWindow?.close()
+		shell.window?.close()
 	})
 	ipcMain.handle('window:is-maximized', () => {
-		return mainWindow?.isMaximized() ?? false
+		return shell.window?.isMaximized() ?? false
 	})
 }
 
@@ -202,10 +160,11 @@ if (!app.requestSingleInstanceLock()) {
 	app.quit()
 } else {
 	app.on('second-instance', () => {
-		if (!mainWindow || mainWindow.isDestroyed()) return
-		if (mainWindow.isMinimized()) mainWindow.restore()
-		mainWindow.show()
-		mainWindow.focus()
+		const win = shell.window
+		if (!win || win.isDestroyed()) return
+		if (win.isMinimized()) win.restore()
+		win.show()
+		win.focus()
 	})
 
 	app.on('before-quit', () => {
@@ -217,14 +176,14 @@ if (!app.requestSingleInstanceLock()) {
 	})
 
 	app.on('activate', () => {
-		if (BrowserWindow.getAllWindows().length === 0 && harness?.url) {
-			createWindow()
-			void mainWindow?.loadURL(harness.url)
+		if (!shell.window && harness?.url) {
+			shell.create()
+			shell.showHarness(harness.url)
 		}
 	})
 
 	app.on('will-quit', (event) => {
-		if (harness?.running) {
+		if (harness?.owned && harness.running) {
 			event.preventDefault()
 			harness.stop().finally(() => {
 				app.exit(0)
@@ -233,10 +192,10 @@ if (!app.requestSingleInstanceLock()) {
 	})
 
 	app.whenReady().then(async () => {
-		setupAutoUpdater(() => mainWindow)
+		setupAutoUpdater(() => shell.window)
 		registerIpc()
 		installMenu()
-		createWindow()
+		shell.create()
 		log.info(`dsh-desktop ${app.getVersion()} 启动，嵌入 @deepseek-ai/dsh ${resolveDshVersion(app.getAppPath())}`)
 
 		try {

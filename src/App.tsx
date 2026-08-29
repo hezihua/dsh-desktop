@@ -21,6 +21,10 @@ export function App() {
 	const [showUpdateModal, setShowUpdateModal] = useState(false)
 
 	useEffect(() => {
+		void window.desktop?.setOverlay?.(showUpdateModal)
+	}, [showUpdateModal])
+
+	useEffect(() => {
 		let cancelled = false
 		const unsubscribers: Array<() => void> = []
 
@@ -106,7 +110,7 @@ export function App() {
 	return (
 		<>
 			<TitleBar />
-			<div className="splash">
+			<div className="splash" hidden={harnessPhase === 'ready'}>
 				<div className="brand-mark" aria-hidden="true" />
 				<div className="brand">DeepSeek Harness</div>
 				<div className={`status ${harnessPhase}`}>{harnessMessage}</div>

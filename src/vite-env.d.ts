@@ -20,7 +20,7 @@ interface Window {
   desktop?: {
     getInfo: () => Promise<DesktopInfo>
     restartHarness: () => Promise<{ ok: boolean }>
-    quit: () => Promise<{ ok: boolean }>
+    setOverlay?: (visible: boolean) => Promise<void>
     minimize?: () => Promise<void>
     maximize?: () => Promise<void>
     close?: () => Promise<void>

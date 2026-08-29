@@ -31,6 +31,8 @@ function ensureLibs() {
 ensureLibs()
 
 const env = { ...process.env }
+// 壳进程必须走完整 Electron 运行时；这个变量只留给 spawn dsh 的回退路径
+delete env.ELECTRON_RUN_AS_NODE
 if (existsSync(libDir)) {
 	env.LD_LIBRARY_PATH = env.LD_LIBRARY_PATH ? `${libDir}:${env.LD_LIBRARY_PATH}` : libDir
 }

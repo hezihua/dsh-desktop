@@ -1,21 +1,21 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { createWriteStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 import log from 'electron-log'
 import { resolveNodeRuntime } from './node-runtime'
 
 export const HARNESS_HOST = '127.0.0.1'
-export const HARNESS_PORTS = [32123, 32124, 32125]
 export const READY_TIMEOUT_MS = 90_000
 export const STOP_GRACE_MS = 4_000
 export const SETTLE_MS = 2_500
+export const START_RETRIES = 3
 export const HARNESS_LOG_FILENAME = 'dsh-web.log'
 
 const POLL_INTERVAL_MS = 250
 const HARNESS_LOG_MAX_BYTES = 2 * 1024 * 1024
+const WEB_URL_RE = /dsh web:\s+(https?:\/\/127\.0\.0\.1:\d+[^\s,;)]*)/i
 
 export type HarnessStartOptions = {
 	appPath: string
@@ -27,6 +27,14 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => {
 		setTimeout(resolve, ms)
 	})
+}
+
+export function extractWebUrl(buffer: string): { url: string | null; rest: string } {
+	const match = WEB_URL_RE.exec(buffer)
+	if (!match) {
+		return { url: null, rest: buffer.length > 240 ? buffer.slice(-240) : buffer }
+	}
+	return { url: match[1], rest: '' }
 }
 
 export function resolveDshEntry(appPath: string): string {
@@ -49,34 +57,28 @@ export function resolveDshVersion(appPath: string): string {
 	}
 }
 
-export function isPortFree(port: number): Promise<boolean> {
-	return new Promise((resolve) => {
-		const probe = createServer()
-		probe.once('error', () => {
-			resolve(false)
-		})
-		probe.once('listening', () => {
-			probe.close(() => {
-				resolve(true)
-			})
-		})
-		probe.listen(port, HARNESS_HOST)
-	})
-}
-
-export async function pickPort(preferred: number[] = HARNESS_PORTS): Promise<number> {
-	for (const port of preferred) {
-		if (await isPortFree(port)) return port
+export async function isDshSurface(url: string): Promise<boolean> {
+	try {
+		const response = await fetch(url, { signal: AbortSignal.timeout(2_000) })
+		if (response.status <= 0) return false
+		const text = await response.text()
+		return (
+			text.includes('DeepSeek Harness') ||
+			text.includes('__ModuleLoader__') ||
+			text.includes('__DSH_BOOT__')
+		)
+	} catch {
+		return false
 	}
-	throw new Error(`没有可用端口：${preferred.join(', ')}`)
 }
 
-function preferredPorts(): number[] {
+function attachCandidates(): string[] {
 	const extra = (process.env.DSH_DESKTOP_PORT ?? '')
 		.split(',')
 		.map((item) => Number.parseInt(item.trim(), 10))
 		.filter((port) => Number.isInteger(port) && port > 0 && port < 65536)
-	return [...extra, ...HARNESS_PORTS]
+		.map((port) => `http://${HARNESS_HOST}:${port}`)
+	return [...extra, `http://${HARNESS_HOST}:3080`]
 }
 
 function killProcessTree(pid: number, child: ChildProcess): void {
@@ -93,6 +95,8 @@ function killProcessTree(pid: number, child: ChildProcess): void {
 export class HarnessServer {
 	url = ''
 	logPath = ''
+	/** 附着到已有 dsh web 时为 false，关窗口不会杀掉别人的进程 */
+	owned = false
 	private child: ChildProcess | undefined
 	private logStream: ReturnType<typeof createWriteStream> | undefined
 	private stopping = false
@@ -103,11 +107,44 @@ export class HarnessServer {
 	}
 
 	get running(): boolean {
+		if (!this.owned) return Boolean(this.url)
 		return this.child !== undefined && this.child.exitCode === null
 	}
 
-	async start(): Promise<string> {
-		if (this.running) throw new Error('Harness 引擎已在运行')
+	async startWithRetry(retries = START_RETRIES): Promise<string> {
+		const attached = await this.tryAttach()
+		if (attached) return attached
+
+		let lastError: unknown
+		for (let attempt = 1; attempt <= retries; attempt++) {
+			try {
+				log.info(`启动 Harness（第 ${attempt}/${retries} 次）`)
+				return await this.startOwned()
+			} catch (error) {
+				lastError = error
+				log.warn(`Harness 启动失败（第 ${attempt} 次）`, error)
+				await this.stop()
+				if (attempt < retries) await sleep(1000 * attempt)
+			}
+		}
+		throw lastError instanceof Error ? lastError : new Error(String(lastError))
+	}
+
+	private async tryAttach(): Promise<string | null> {
+		for (const url of attachCandidates()) {
+			if (await isDshSurface(url)) {
+				this.url = url
+				this.owned = false
+				this.logPath = join(this.options.logDir, HARNESS_LOG_FILENAME)
+				log.info(`附着到已有 Harness：${url}`)
+				return url
+			}
+		}
+		return null
+	}
+
+	private async startOwned(): Promise<string> {
+		if (this.child && this.child.exitCode === null) throw new Error('Harness 引擎已在运行')
 
 		const entry = resolveDshEntry(this.options.appPath)
 		if (!existsSync(entry)) {
@@ -115,8 +152,8 @@ export class HarnessServer {
 		}
 
 		const runtime = await resolveNodeRuntime()
-		const port = await pickPort(preferredPorts())
-		this.url = `http://${HARNESS_HOST}:${port}`
+		this.url = ''
+		this.owned = true
 		this.logPath = join(this.options.logDir, HARNESS_LOG_FILENAME)
 
 		mkdirSync(this.options.logDir, { recursive: true })
@@ -131,16 +168,7 @@ export class HarnessServer {
 		}
 		this.logStream = createWriteStream(this.logPath, { flags: 'a' })
 
-		const args = [
-			'--expose-internals',
-			entry,
-			'web',
-			'--no-open',
-			'--host',
-			HARNESS_HOST,
-			'--port',
-			String(port),
-		]
+		const args = ['--expose-internals', entry, 'web', '--no-open', '--host', HARNESS_HOST, '--port', '0']
 
 		const env: NodeJS.ProcessEnv = { ...process.env }
 		delete env.ELECTRON_RUN_AS_NODE
@@ -149,12 +177,11 @@ export class HarnessServer {
 			env.ELECTRON_NO_ATTACH_CONSOLE = '1'
 		}
 
-		log.info('启动 Harness', {
+		log.info('spawn dsh web', {
 			node: runtime.executable,
 			version: runtime.version,
 			runAsElectronNode: runtime.runAsElectronNode,
 			entry,
-			url: this.url,
 		})
 
 		this.stopping = false
@@ -165,12 +192,21 @@ export class HarnessServer {
 			windowsHide: true,
 		})
 
-		this.child.stdout?.pipe(this.logStream, { end: false })
-		this.child.stderr?.pipe(this.logStream, { end: false })
+		let output = ''
+		const consume = (chunk: Buffer) => {
+			const text = chunk.toString()
+			this.logStream?.write(text)
+			output += text
+			const extracted = extractWebUrl(output)
+			output = extracted.rest
+			if (extracted.url) this.url = extracted.url
+		}
 		this.child.stdout?.on('data', (chunk: Buffer) => {
+			consume(chunk)
 			log.info(`[dsh] ${chunk.toString().trimEnd()}`)
 		})
 		this.child.stderr?.on('data', (chunk: Buffer) => {
+			consume(chunk)
 			log.warn(`[dsh] ${chunk.toString().trimEnd()}`)
 		})
 
@@ -190,6 +226,9 @@ export class HarnessServer {
 			if (!this.running) {
 				throw new Error(`Harness 在就绪后立即退出，日志：${this.logPath}`)
 			}
+			if (!(await isDshSurface(this.url))) {
+				throw new Error(`Harness 端口已开但页面不像官方 UI：${this.url}`)
+			}
 			return this.url
 		} catch (error) {
 			await this.stop()
@@ -200,27 +239,34 @@ export class HarnessServer {
 	private async waitReady(timeoutMs = READY_TIMEOUT_MS): Promise<void> {
 		const deadline = Date.now() + timeoutMs
 		for (;;) {
-			if (!this.running) {
+			if (this.owned && !this.running) {
 				throw new Error(`Harness 在就绪前退出，日志：${this.logPath}`)
 			}
-			try {
-				const response = await fetch(this.url, { signal: AbortSignal.timeout(2_000) })
-				if (response.status > 0) return
-			} catch {
-				// 还没监听
+			if (this.url) {
+				try {
+					const response = await fetch(this.url, { signal: AbortSignal.timeout(2_000) })
+					if (response.status > 0) return
+				} catch {
+					// 打印了 URL 但还没真正 listen
+				}
 			}
 			if (Date.now() >= deadline) {
-				throw new Error(`Harness 在 ${timeoutMs}ms 内未响应 ${this.url}，日志：${this.logPath}`)
+				throw new Error(`Harness 在 ${timeoutMs}ms 内未就绪，日志：${this.logPath}`)
 			}
 			await sleep(POLL_INTERVAL_MS)
 		}
 	}
 
 	async stop(graceMs = STOP_GRACE_MS): Promise<void> {
+		if (!this.owned) {
+			this.url = ''
+			return
+		}
 		if (this.child === undefined) return
 		this.stopping = true
 		const child = this.child
 		this.child = undefined
+		this.owned = false
 		if (child.exitCode !== null) return
 
 		const exited = new Promise<void>((resolve) => {
@@ -248,10 +294,5 @@ export class HarnessServer {
 			}
 			await exited
 		}
-	}
-
-	async restart(): Promise<string> {
-		await this.stop()
-		return this.start()
 	}
 }

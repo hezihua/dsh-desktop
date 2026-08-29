@@ -131,6 +131,10 @@ button.ghost {
   color: #fff;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .splash {
   flex: 1;
   display: flex;

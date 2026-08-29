@@ -63,8 +63,7 @@ function extraNodeCandidates(): string[] {
 }
 
 /**
- * 优先用本机 Node（Electron 28 内置 Node 18，跑不了 dsh）。
- * 仅当 Electron 自带 Node 已满足官方版本时，才回退到 ELECTRON_RUN_AS_NODE。
+ * 优先用本机 Node。Electron 39 自带 Node 22.20，可作为 ELECTRON_RUN_AS_NODE 回退。
  */
 export async function resolveNodeRuntime(): Promise<NodeRuntime> {
 	const override = process.env.DSH_NODE_PATH?.trim()

@@ -7,7 +7,9 @@
   "asarUnpack": [
     "node_modules/@deepseek-ai/**",
     "node_modules/node-pty/**",
-    "node_modules/node-addon-require-builtin/**"
+    "node_modules/node-addon-require-builtin/**",
+    "node_modules/koffi/**",
+    "node_modules/sharp/**"
   ],
   "directories": {
     "output": "release"

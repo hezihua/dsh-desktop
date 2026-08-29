@@ -8,6 +8,10 @@ export default defineConfig({
     electron([
       {
         entry: 'electron/main.ts',
+        onstart({ startup }) {
+          delete process.env.ELECTRON_RUN_AS_NODE
+          void startup()
+        },
         vite: {
           build: {
             rollupOptions: {
