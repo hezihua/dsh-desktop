@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -17,6 +18,7 @@ export function isSupportedNodeVersion(version: string): boolean {
 export type NodeRuntime = {
 	executable: string
 	version: string
+	source: 'override' | 'bundled' | 'system' | 'electron'
 	/** 用 Electron 二进制充当 Node（ELECTRON_RUN_AS_NODE=1） */
 	runAsElectronNode: boolean
 }
@@ -62,10 +64,23 @@ function extraNodeCandidates(): string[] {
 	return ['/usr/local/bin/node', '/usr/bin/node']
 }
 
+export function resolveBundledNodePath(): string | null {
+	const name = process.platform === 'win32' ? 'node.exe' : 'node'
+	const candidates = [
+		process.resourcesPath ? join(process.resourcesPath, 'node', name) : '',
+		join(process.cwd(), 'resources', 'node', name),
+	]
+	for (const candidate of candidates) {
+		if (candidate && existsSync(candidate)) return candidate
+	}
+	return null
+}
+
 /**
- * 优先用本机 Node。Electron 39 自带 Node 22.20，可作为 ELECTRON_RUN_AS_NODE 回退。
+ * 安装包优先用 extraResources 里的 Node。
+ * 开发态优先系统 Node。找不到合格 Node 时回退 ELECTRON_RUN_AS_NODE。
  */
-export async function resolveNodeRuntime(): Promise<NodeRuntime> {
+export async function resolveNodeRuntime(packaged: boolean): Promise<NodeRuntime> {
 	const override = process.env.DSH_NODE_PATH?.trim()
 	if (override) {
 		if (!existsSync(override)) {
@@ -75,39 +90,60 @@ export async function resolveNodeRuntime(): Promise<NodeRuntime> {
 		if (!version || !isSupportedNodeVersion(version)) {
 			throw new Error(`DSH_NODE_PATH 的 Node 版本过低（${version ?? '未知'}），需要 22.19+ 或 24+`)
 		}
-		return { executable: override, version, runAsElectronNode: false }
+		return { executable: override, version, source: 'override', runAsElectronNode: false }
+	}
+
+	const tryPath = async (
+		executable: string,
+		source: NodeRuntime['source'],
+	): Promise<NodeRuntime | null> => {
+		const version = await readNodeVersion(executable)
+		if (!version || !isSupportedNodeVersion(version)) return null
+		return { executable, version, source, runAsElectronNode: false }
+	}
+
+	const bundled = resolveBundledNodePath()
+	if (packaged && bundled) {
+		const runtime = await tryPath(bundled, 'bundled')
+		if (runtime) return runtime
 	}
 
 	const systemNode = await resolveWhich('node')
 	if (systemNode) {
-		const version = await readNodeVersion(systemNode)
-		if (version && isSupportedNodeVersion(version)) {
-			return { executable: systemNode, version, runAsElectronNode: false }
-		}
+		const runtime = await tryPath(systemNode, 'system')
+		if (runtime) return runtime
 	}
 
 	for (const candidate of extraNodeCandidates()) {
 		if (!existsSync(candidate)) continue
-		const version = await readNodeVersion(candidate)
-		if (version && isSupportedNodeVersion(version)) {
-			return { executable: candidate, version, runAsElectronNode: false }
-		}
+		const runtime = await tryPath(candidate, 'system')
+		if (runtime) return runtime
 	}
 
-	const bundled = process.versions.node
-	if (isSupportedNodeVersion(bundled)) {
+	if (!packaged && bundled) {
+		const runtime = await tryPath(bundled, 'bundled')
+		if (runtime) return runtime
+	}
+
+	const electronNode = process.versions.node
+	if (isSupportedNodeVersion(electronNode)) {
 		const version = await readNodeVersion(process.execPath, {
 			...process.env,
 			ELECTRON_RUN_AS_NODE: '1',
 		})
 		return {
 			executable: process.execPath,
-			version: version ?? bundled,
+			version: version ?? electronNode,
+			source: 'electron',
 			runAsElectronNode: true,
 		}
 	}
 
 	throw new Error(
-		`DeepSeek Harness 需要 Node.js 22.19+ 或 24+。当前 Electron 内置 Node 为 ${bundled}，也未找到合格的系统 Node。请安装 Node 后重试，或设置 DSH_NODE_PATH。`,
+		`DeepSeek Harness 需要 Node.js 22.19+ 或 24+。未找到安装包内的 Node，Electron 内置为 ${electronNode}，也没有合格的系统 Node。`,
 	)
+}
+
+export function nodeBinDir(runtime: NodeRuntime): string {
+	return dirname(runtime.executable)
 }

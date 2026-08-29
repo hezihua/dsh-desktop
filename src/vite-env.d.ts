@@ -1,9 +1,13 @@
 /// <reference types="vite/client" />
 
-type HarnessStatus =
-  | { phase: 'starting'; message: string }
-  | { phase: 'ready'; message: string; url?: string }
-  | { phase: 'error'; message: string }
+type HarnessStatus = {
+  phase: 'starting' | 'ready' | 'error'
+  message: string
+  url?: string
+  logPath?: string
+  logTail?: string
+  safeMode?: boolean
+}
 
 interface DesktopInfo {
   appVersion: string
@@ -13,13 +17,17 @@ interface DesktopInfo {
   phase: 'starting' | 'ready' | 'error'
   message: string
   logPath: string
+  logTail: string
   dshHome: string
+  safeMode: boolean
 }
 
 interface Window {
   desktop?: {
     getInfo: () => Promise<DesktopInfo>
     restartHarness: () => Promise<{ ok: boolean }>
+    restartSafe?: () => Promise<{ ok: boolean }>
+    openLog?: () => Promise<{ ok: boolean; path: string }>
     setOverlay?: (visible: boolean) => Promise<void>
     minimize?: () => Promise<void>
     maximize?: () => Promise<void>

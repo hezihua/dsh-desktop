@@ -13,6 +13,8 @@ dist-ssr
 dist-electron
 release
 .electron-libs
+resources/node/node
+resources/node/node.exe
 *.local
 
 # Editor directories and files

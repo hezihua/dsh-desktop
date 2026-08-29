@@ -2,9 +2,9 @@ import { type ChildProcess, spawn } from 'node:child_process'
 import { createWriteStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { dirname, join, sep } from 'node:path'
+import { delimiter, dirname, join, sep } from 'node:path'
 import log from 'electron-log'
-import { resolveNodeRuntime } from './node-runtime'
+import { nodeBinDir, resolveNodeRuntime } from './node-runtime'
 
 export const HARNESS_HOST = '127.0.0.1'
 export const READY_TIMEOUT_MS = 90_000
@@ -20,6 +20,9 @@ const WEB_URL_RE = /dsh web:\s+(https?:\/\/127\.0\.0\.1:\d+[^\s,;)]*)/i
 export type HarnessStartOptions = {
 	appPath: string
 	logDir: string
+	packaged: boolean
+	attach?: boolean
+	dshHome?: string
 	onUnexpectedExit?: (code: number | null, signal: NodeJS.Signals | null) => void
 }
 
@@ -44,6 +47,16 @@ export function resolveDshEntry(appPath: string): string {
 		? manifest.replace(`app.asar${sep}`, `app.asar.unpacked${sep}`)
 		: manifest
 	return join(dirname(unpacked), 'lib', 'bin.js')
+}
+
+export function readLogTail(logPath: string, maxBytes = 4_000): string {
+	try {
+		if (!logPath || !existsSync(logPath)) return ''
+		const data = readFileSync(logPath)
+		return data.subarray(Math.max(0, data.length - maxBytes)).toString('utf8')
+	} catch {
+		return ''
+	}
 }
 
 export function resolveDshVersion(appPath: string): string {
@@ -112,8 +125,10 @@ export class HarnessServer {
 	}
 
 	async startWithRetry(retries = START_RETRIES): Promise<string> {
-		const attached = await this.tryAttach()
-		if (attached) return attached
+		if (this.options.attach !== false) {
+			const attached = await this.tryAttach()
+			if (attached) return attached
+		}
 
 		let lastError: unknown
 		for (let attempt = 1; attempt <= retries; attempt++) {
@@ -151,7 +166,7 @@ export class HarnessServer {
 			throw new Error(`找不到 @deepseek-ai/dsh 入口：${entry}`)
 		}
 
-		const runtime = await resolveNodeRuntime()
+		const runtime = await resolveNodeRuntime(this.options.packaged)
 		this.url = ''
 		this.owned = true
 		this.logPath = join(this.options.logDir, HARNESS_LOG_FILENAME)
@@ -172,16 +187,21 @@ export class HarnessServer {
 
 		const env: NodeJS.ProcessEnv = { ...process.env }
 		delete env.ELECTRON_RUN_AS_NODE
+		if (this.options.dshHome) env.DSH_HOME = this.options.dshHome
 		if (runtime.runAsElectronNode) {
 			env.ELECTRON_RUN_AS_NODE = '1'
 			env.ELECTRON_NO_ATTACH_CONSOLE = '1'
+		} else {
+			env.PATH = `${nodeBinDir(runtime)}${delimiter}${env.PATH ?? ''}`
 		}
 
 		log.info('spawn dsh web', {
 			node: runtime.executable,
 			version: runtime.version,
+			source: runtime.source,
 			runAsElectronNode: runtime.runAsElectronNode,
 			entry,
+			dshHome: env.DSH_HOME ?? join(homedir(), '.dsh'),
 		})
 
 		this.stopping = false

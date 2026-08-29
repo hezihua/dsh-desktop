@@ -1,9 +1,10 @@
-import { app, Menu, ipcMain } from 'electron'
+import { app, Menu, ipcMain, shell as electronShell } from 'electron'
 import { join } from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
-import { HarnessServer, resolveDshVersion } from './harness'
+import { HarnessServer, readLogTail, resolveDshVersion } from './harness'
 import { checkForUpdatesLater, setupAutoUpdater } from './updater'
+import { createAppTray } from './tray'
 import { DesktopShell } from './window'
 
 const CRASH_RESTARTS = 3
@@ -16,20 +17,44 @@ let harnessPhase: 'starting' | 'ready' | 'error' = 'starting'
 let harnessMessage = '正在启动 DeepSeek Harness…'
 let crashRestarts = 0
 let booting = false
+let bootMode: 'normal' | 'safe' = 'normal'
+
+function defaultDshHome(): string {
+	return process.env.DSH_HOME ?? join(app.getPath('home'), '.dsh')
+}
+
+function activeDshHome(): string {
+	if (bootMode === 'safe') return join(app.getPath('userData'), 'harness-safe')
+	return defaultDshHome()
+}
+
+function logPath(): string {
+	return harness?.logPath || join(app.getPath('userData'), 'logs', 'dsh-web.log')
+}
 
 function publishStatus(phase: 'starting' | 'ready' | 'error', message: string) {
 	harnessPhase = phase
 	harnessMessage = message
 	const win = shell.window
 	if (!win || win.isDestroyed()) return
-	win.webContents.send('harness:status', { phase, message, url: harness?.url || undefined })
+	win.webContents.send('harness:status', {
+		phase,
+		message,
+		url: harness?.url || undefined,
+		logPath: logPath(),
+		logTail: phase === 'error' ? readLogTail(logPath()) : '',
+		safeMode: bootMode === 'safe',
+	})
 }
 
 async function bootAndNavigate() {
 	if (booting) return
 	booting = true
 	lastError = ''
-	publishStatus('starting', '正在启动 DeepSeek Harness…')
+	publishStatus(
+		'starting',
+		bootMode === 'safe' ? '正在以安全模式启动 DeepSeek Harness…' : '正在启动 DeepSeek Harness…',
+	)
 	shell.hideHarness()
 
 	try {
@@ -37,6 +62,9 @@ async function bootAndNavigate() {
 		harness = new HarnessServer({
 			appPath: app.getAppPath(),
 			logDir: join(app.getPath('userData'), 'logs'),
+			packaged: app.isPackaged,
+			attach: bootMode === 'normal',
+			dshHome: activeDshHome(),
 			onUnexpectedExit: (code, signal) => {
 				if (quitting) return
 				void recoverHarness(code, signal)
@@ -44,7 +72,7 @@ async function bootAndNavigate() {
 		})
 		const url = await harness.startWithRetry()
 		crashRestarts = 0
-		log.info(`Harness 已就绪：${url}${harness.owned ? '' : '（附着）'}`)
+		log.info(`Harness 已就绪：${url}${harness.owned ? '' : '（附着）'}${bootMode === 'safe' ? '（安全模式）' : ''}`)
 		publishStatus('ready', url)
 		shell.showHarness(url)
 	} finally {
@@ -71,17 +99,27 @@ async function recoverHarness(code: number | null, signal: NodeJS.Signals | null
 	}
 }
 
-async function restartHarness() {
+async function restartHarness(mode: 'normal' | 'safe' = 'normal') {
 	try {
+		bootMode = mode
 		crashRestarts = 0
 		lastError = ''
-		publishStatus('starting', '正在重新启动 DeepSeek Harness…')
+		publishStatus(
+			'starting',
+			mode === 'safe' ? '正在以安全模式启动 DeepSeek Harness…' : '正在重新启动 DeepSeek Harness…',
+		)
 		if (harness?.owned) await harness.stop()
 		await bootAndNavigate()
 	} catch (error) {
 		lastError = error instanceof Error ? error.message : String(error)
 		publishStatus('error', lastError)
 	}
+}
+
+function requestQuit() {
+	quitting = true
+	shell.hideOnClose = false
+	app.quit()
 }
 
 function installMenu() {
@@ -107,11 +145,26 @@ function installMenu() {
 				{
 					label: '重启 Harness',
 					click: () => {
-						void restartHarness()
+						void restartHarness('normal')
+					},
+				},
+				{
+					label: '安全模式启动',
+					click: () => {
+						void restartHarness('safe')
+					},
+				},
+				{
+					label: '打开日志',
+					click: () => {
+						void electronShell.openPath(logPath())
 					},
 				},
 				{ type: 'separator' },
-				isMac ? { role: 'close' } : { role: 'quit' },
+				{
+					label: '退出',
+					click: () => requestQuit(),
+				},
 			],
 		},
 		{ role: 'editMenu' },
@@ -129,12 +182,23 @@ function registerIpc() {
 		error: lastError,
 		phase: harnessPhase,
 		message: harnessMessage,
-		logPath: harness?.logPath || join(app.getPath('userData'), 'logs', 'dsh-web.log'),
-		dshHome: process.env.DSH_HOME ?? join(app.getPath('home'), '.dsh'),
+		logPath: logPath(),
+		logTail: harnessPhase === 'error' ? readLogTail(logPath()) : '',
+		dshHome: activeDshHome(),
+		safeMode: bootMode === 'safe',
 	}))
 	ipcMain.handle('desktop:restart-harness', async () => {
-		await restartHarness()
+		await restartHarness('normal')
 		return { ok: true }
+	})
+	ipcMain.handle('desktop:restart-safe', async () => {
+		await restartHarness('safe')
+		return { ok: true }
+	})
+	ipcMain.handle('desktop:open-log', async () => {
+		const path = logPath()
+		const result = await electronShell.openPath(path)
+		return { ok: result === '', path }
 	})
 	ipcMain.handle('desktop:set-overlay', (_event, visible: boolean) => {
 		shell.setOverlay(Boolean(visible))
@@ -160,26 +224,26 @@ if (!app.requestSingleInstanceLock()) {
 	app.quit()
 } else {
 	app.on('second-instance', () => {
-		const win = shell.window
-		if (!win || win.isDestroyed()) return
-		if (win.isMinimized()) win.restore()
-		win.show()
-		win.focus()
+		shell.show()
 	})
 
 	app.on('before-quit', () => {
 		quitting = true
+		shell.hideOnClose = false
 	})
 
 	app.on('window-all-closed', () => {
+		if (shell.hideOnClose) return
 		app.quit()
 	})
 
 	app.on('activate', () => {
-		if (!shell.window && harness?.url) {
+		if (!shell.window) {
 			shell.create()
-			shell.showHarness(harness.url)
+			if (harness?.url) shell.showHarness(harness.url)
+			return
 		}
+		shell.show()
 	})
 
 	app.on('will-quit', (event) => {
@@ -195,6 +259,14 @@ if (!app.requestSingleInstanceLock()) {
 		setupAutoUpdater(() => shell.window)
 		registerIpc()
 		installMenu()
+		const tray = createAppTray({
+			show: () => shell.show(),
+			restart: () => {
+				void restartHarness(bootMode)
+			},
+			quit: () => requestQuit(),
+		})
+		shell.hideOnClose = tray !== null
 		shell.create()
 		log.info(`dsh-desktop ${app.getVersion()} 启动，嵌入 @deepseek-ai/dsh ${resolveDshVersion(app.getAppPath())}`)
 

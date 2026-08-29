@@ -11,6 +11,13 @@
     "node_modules/koffi/**",
     "node_modules/sharp/**"
   ],
+  "extraResources": [
+    {
+      "from": "resources/node",
+      "to": "node",
+      "filter": ["node", "node.exe"]
+    }
+  ],
   "directories": {
     "output": "release"
   },

@@ -1,13 +1,19 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-export type HarnessStatus =
-	| { phase: 'starting'; message: string }
-	| { phase: 'ready'; message: string; url?: string }
-	| { phase: 'error'; message: string }
+export type HarnessStatus = {
+	phase: 'starting' | 'ready' | 'error'
+	message: string
+	url?: string
+	logPath?: string
+	logTail?: string
+	safeMode?: boolean
+}
 
 contextBridge.exposeInMainWorld('desktop', {
 	getInfo: () => ipcRenderer.invoke('desktop:get-info'),
 	restartHarness: () => ipcRenderer.invoke('desktop:restart-harness'),
+	restartSafe: () => ipcRenderer.invoke('desktop:restart-safe'),
+	openLog: () => ipcRenderer.invoke('desktop:open-log'),
 	setOverlay: (visible: boolean) => ipcRenderer.invoke('desktop:set-overlay', visible),
 	minimize: () => ipcRenderer.invoke('window:minimize'),
 	maximize: () => ipcRenderer.invoke('window:maximize'),

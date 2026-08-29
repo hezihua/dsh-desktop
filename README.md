@@ -7,13 +7,13 @@ Electron 桌面壳，嵌入官方 [`@deepseek-ai/dsh`](https://www.npmjs.com/pac
 - [Windows x64 安装包](https://github.com/hezihua/dsh-desktop/releases/latest/download/dsh-desktop-win32-x64.exe)
 - [全部版本](https://github.com/hezihua/dsh-desktop/releases)
 
-安装包由 GitHub Actions 在 Windows 上构建。体积较大（内含完整 `@deepseek-ai/dsh`）。没装 Node 时会尝试用 Electron 内置 Node 启动引擎。
+安装包由 GitHub Actions 在 Windows 上构建，内含完整 `@deepseek-ai/dsh` 和一份 Node 22。没装 Node 也能双击启动。关闭窗口会进托盘，引擎继续跑；托盘菜单里退出才会结束进程。
 
 ## 要求
 
-- Node.js **22.19+** 或 **24+**（Harness 官方 engines）
-- 本机需能解析 npm 上的 `@deepseek-ai/dsh`
-- Electron 39 自带 Node 22.20。优先用系统 Node；找不到合格 Node 时回退 `ELECTRON_RUN_AS_NODE`
+- **开发**：Node.js **22.19+** 或 **24+**
+- **安装包**：自带 Node，不依赖本机环境
+- 本机需能解析 npm 上的 `@deepseek-ai/dsh`（仅从源码构建时）
 
 ## 开发
 
@@ -28,16 +28,17 @@ WSL / 精简 Linux 若缺 `libnss3.so`，`electron:dev` 会自动把对应库解
 sudo apt-get install -y libnss3 libnspr4 libasound2t64
 ```
 
-启动页出现后，引擎就绪会在标题栏下方嵌入官方界面。会话和配置默认写在 `~/.dsh`，与 CLI 共用。若本机已有 `dsh web`（例如 3080），会先尝试附着而不是再起一份。
+启动页出现后，引擎就绪会在标题栏下方嵌入官方界面。会话和配置默认写在 `~/.dsh`，与 CLI 共用。若本机已有 `dsh web`（例如 3080），会先尝试附着而不是再起一份。启动失败可「打开日志」或「安全模式」（独立数据目录，不加载 `~/.dsh` 插件）。
 
 可选环境变量：
 
 | 变量 | 含义 |
 | --- | --- |
 | `DSH_NODE_PATH` | 指定 Node 可执行文件 |
-| `DSH_HOME` | Harness 数据目录，默认 `~/.dsh` |
+| `DSH_HOME` | Harness 数据目录，默认 `~/.dsh`（安全模式除外） |
 | `DSH_DESKTOP_PORT` | 附着时优先探测的端口，逗号分隔 |
 | `UPDATE_SERVER_URL` | 自动更新源，默认 `http://localhost:8080/updates/` |
+| `NODEJS_ORG_MIRROR` | 打包时下载 Node 的镜像，默认 `https://nodejs.org/dist` |
 
 ## 打包
 
@@ -45,13 +46,14 @@ sudo apt-get install -y libnss3 libnspr4 libasound2t64
 pnpm electron:build
 ```
 
-产物在 `release/`。原生模块保持 Node ABI（`npmRebuild: false`）。Windows 安装包请在 Windows 上执行 `pnpm electron:build:win`，或打 `v*` tag 推送后由 CI 生成并挂到 [Releases](https://github.com/hezihua/dsh-desktop/releases)。
+会先下载官方 Node 到 `resources/node/`，再打进 `extraResources`。产物在 `release/`。原生模块保持 Node ABI（`npmRebuild: false`）。Windows 安装包请在 Windows 上执行 `pnpm electron:build:win`，或打 `v*` tag 推送后由 CI 生成并挂到 [Releases](https://github.com/hezihua/dsh-desktop/releases)。
 
 ## 结构
 
 ```
-electron/          主进程：dsh 监护、WebContentsView、自动更新
+electron/          主进程：dsh 监护、WebContentsView、托盘、自动更新
 src/               壳层（React）：标题栏 + 启动页 + 更新弹层
+scripts/           WSL 系统库、打包用 Node 下载
 ```
 
-窗口关闭时结束由本应用拉起的引擎进程树；附着到已有 `dsh web` 时不会杀那个进程。
+关闭窗口会隐藏到托盘，引擎继续跑；托盘或菜单「退出」才结束由本应用拉起的进程。附着到已有 `dsh web` 时，退出也不会杀那个进程。

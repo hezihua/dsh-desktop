@@ -17,6 +17,8 @@ export function App() {
 	const [dshVersion, setDshVersion] = useState('')
 	const [appVersion, setAppVersion] = useState('')
 	const [logPath, setLogPath] = useState('')
+	const [logTail, setLogTail] = useState('')
+	const [safeMode, setSafeMode] = useState(false)
 	const [updateState, setUpdateState] = useState<UpdateState>({ phase: 'idle' })
 	const [showUpdateModal, setShowUpdateModal] = useState(false)
 
@@ -33,6 +35,8 @@ export function App() {
 			setAppVersion(info.appVersion)
 			setDshVersion(info.dshVersion)
 			setLogPath(info.logPath)
+			setLogTail(info.logTail || '')
+			setSafeMode(Boolean(info.safeMode))
 			if (info.phase === 'error' && info.error) {
 				setHarnessPhase('error')
 				setHarnessMessage(info.error)
@@ -46,6 +50,9 @@ export function App() {
 				window.desktop.onHarnessStatus((status) => {
 					setHarnessPhase(status.phase)
 					setHarnessMessage(status.message)
+					if (status.logPath) setLogPath(status.logPath)
+					if (status.logTail !== undefined) setLogTail(status.logTail)
+					if (status.safeMode !== undefined) setSafeMode(status.safeMode)
 				}),
 			)
 		}
@@ -104,7 +111,15 @@ export function App() {
 	const restartHarness = useCallback(async () => {
 		setHarnessPhase('starting')
 		setHarnessMessage('正在重新启动 DeepSeek Harness…')
+		setSafeMode(false)
 		await window.desktop?.restartHarness()
+	}, [])
+
+	const restartSafe = useCallback(async () => {
+		setHarnessPhase('starting')
+		setHarnessMessage('正在以安全模式启动 DeepSeek Harness…')
+		setSafeMode(true)
+		await window.desktop?.restartSafe?.()
 	}, [])
 
 	return (
@@ -116,18 +131,33 @@ export function App() {
 				<div className={`status ${harnessPhase}`}>{harnessMessage}</div>
 				<div className="meta">
 					桌面 {appVersion || '…'} · 引擎 {dshVersion || '…'}
+					{safeMode ? ' · 安全模式' : ''}
 				</div>
 				<div className="actions">
 					{harnessPhase === 'error' ? (
-						<button type="button" onClick={() => void restartHarness()}>
-							重试
-						</button>
+						<>
+							<button type="button" onClick={() => void restartHarness()}>
+								重试
+							</button>
+							<button type="button" onClick={() => void restartSafe()}>
+								安全模式
+							</button>
+							<button type="button" className="ghost" onClick={() => void window.desktop?.openLog?.()}>
+								打开日志
+							</button>
+						</>
 					) : null}
 					<button type="button" onClick={() => void checkUpdate()}>
 						检查更新
 					</button>
 				</div>
+				{harnessPhase === 'error' ? (
+					<p className="hint">
+						安全模式使用独立数据目录，不附着已有服务，也避开 ~/.dsh 里可能损坏的第三方插件。
+					</p>
+				) : null}
 				{harnessPhase === 'error' && logPath ? <p className="log">日志：{logPath}</p> : null}
+				{harnessPhase === 'error' && logTail ? <pre className="log-tail">{logTail}</pre> : null}
 			</div>
 
 			{showUpdateModal ? (

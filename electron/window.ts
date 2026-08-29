@@ -11,6 +11,8 @@ export class DesktopShell {
 	private harnessUrl: string | null = null
 	private overlay = false
 
+	hideOnClose = false
+
 	create(): BrowserWindow {
 		const win = new BrowserWindow({
 			width: 1280,
@@ -51,11 +53,24 @@ export class DesktopShell {
 			if (/^https?:/.test(url)) void shell.openExternal(url)
 		})
 
+		win.on('close', (event) => {
+			if (!this.hideOnClose) return
+			event.preventDefault()
+			win.hide()
+		})
 		win.once('ready-to-show', () => {
 			win.show()
 		})
 		this.loadChrome()
 		return win
+	}
+
+	show(): void {
+		const win = this.window
+		if (!win || win.isDestroyed()) return
+		if (win.isMinimized()) win.restore()
+		win.show()
+		win.focus()
 	}
 
 	loadChrome(): void {
