@@ -77,6 +77,7 @@ git push origin v0.2.1
 electron/          主进程：dsh 监护、WebContentsView、托盘、自动更新
 src/               壳层（React）：标题栏 + 启动页 + 更新弹层
 scripts/           WSL 系统库、打包用 Node 下载
+TODO.md            后续优化清单（先不改代码）
 ```
 
 关闭窗口会隐藏到托盘，引擎继续跑；托盘或菜单「退出」才结束由本应用拉起的进程。附着到已有 `dsh web` 时，退出也不会杀那个进程。
