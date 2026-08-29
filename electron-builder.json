@@ -1,0 +1,30 @@
+{
+  "appId": "com.example.dsh-desktop",
+  "productName": "dsh-desktop",
+  "asar": true,
+  "npmRebuild": false,
+  "files": ["dist/**/*", "dist-electron/**/*", "package.json"],
+  "asarUnpack": [
+    "node_modules/@deepseek-ai/**",
+    "node_modules/node-pty/**",
+    "node_modules/node-addon-require-builtin/**"
+  ],
+  "directories": {
+    "output": "release"
+  },
+  "publish": [
+    {
+      "provider": "generic",
+      "url": "http://localhost:8080/updates/"
+    }
+  ],
+  "win": {
+    "artifactName": "${productName}-${platform}-${arch}-${version}.${ext}",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  }
+}
