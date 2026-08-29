@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "commonjs",
   "main": "dist-electron/main.js",
   "engines": {
@@ -10,7 +10,8 @@
   "scripts": {
     "electron:dev": "node scripts/with-electron-libs.cjs vite --config vite.config.electron.ts",
     "build": "tsc --noEmit && tsc --noEmit -p tsconfig.electron.json && vite build --config vite.config.electron.ts",
-    "electron:build": "pnpm build && electron-builder"
+    "electron:build": "pnpm build && electron-builder -p never",
+    "electron:build:win": "pnpm build && electron-builder --win -p never"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.1-rc.2",

@@ -21,7 +21,8 @@
     }
   ],
   "win": {
-    "artifactName": "${productName}-${platform}-${arch}-${version}.${ext}",
+    "artifactName": "${productName}-${platform}-${arch}.${ext}",
+    "signAndEditExecutable": false,
     "target": [
       {
         "target": "nsis",
