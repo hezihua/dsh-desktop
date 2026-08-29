@@ -36,5 +36,11 @@
         "arch": ["x64"]
       }
     ]
+  },
+  "mac": {
+    "artifactName": "${productName}-darwin-${arch}.${ext}",
+    "category": "public.app-category.developer-tools",
+    "identity": null,
+    "target": ["dmg", "zip"]
   }
 }

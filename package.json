@@ -12,7 +12,8 @@
     "build": "tsc --noEmit && tsc --noEmit -p tsconfig.electron.json && vite build --config vite.config.electron.ts",
     "prepare-node": "node scripts/prepare-node.cjs",
     "electron:build": "pnpm prepare-node && pnpm build && electron-builder -p never",
-    "electron:build:win": "node scripts/prepare-node.cjs --platform win32 --arch x64 && pnpm build && electron-builder --win -p never"
+    "electron:build:win": "node scripts/prepare-node.cjs --platform win32 --arch x64 && pnpm build && electron-builder --win -p never",
+    "electron:build:mac": "pnpm prepare-node && pnpm build && electron-builder --mac -p never"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.1-rc.2",

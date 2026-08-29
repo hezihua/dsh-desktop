@@ -5,9 +5,17 @@ Electron 桌面壳，嵌入官方 [`@deepseek-ai/dsh`](https://www.npmjs.com/pac
 ## 下载
 
 - [Windows x64 安装包](https://github.com/hezihua/dsh-desktop/releases/latest/download/dsh-desktop-win32-x64.exe)
+- [macOS Apple Silicon](https://github.com/hezihua/dsh-desktop/releases/latest/download/dsh-desktop-darwin-arm64.dmg)
+- [macOS Intel](https://github.com/hezihua/dsh-desktop/releases/latest/download/dsh-desktop-darwin-x64.dmg)
 - [全部版本](https://github.com/hezihua/dsh-desktop/releases)
 
-安装包由 GitHub Actions 在 Windows 上构建，内含完整 `@deepseek-ai/dsh` 和一份 Node 22。没装 Node 也能双击启动。关闭窗口会进托盘，引擎继续跑；托盘菜单里退出才会结束进程。
+安装包由 GitHub Actions 分别在 Windows / macOS 上构建，内含完整 `@deepseek-ai/dsh` 和一份 Node 22。没装 Node 也能双击启动。关闭窗口会进托盘，引擎继续跑；托盘菜单里退出才会结束进程。
+
+macOS 安装包未签名。若提示「无法打开 / 已损坏」，在终端执行：
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/dsh-desktop.app"
+```
 
 ## 要求
 
@@ -46,7 +54,22 @@ sudo apt-get install -y libnss3 libnspr4 libasound2t64
 pnpm electron:build
 ```
 
-会先下载官方 Node 到 `resources/node/`，再打进 `extraResources`。产物在 `release/`。原生模块保持 Node ABI（`npmRebuild: false`）。Windows 安装包请在 Windows 上执行 `pnpm electron:build:win`，或打 `v*` tag 推送后由 CI 生成并挂到 [Releases](https://github.com/hezihua/dsh-desktop/releases)。
+会先下载官方 Node 到 `resources/node/`，再打进 `extraResources`。产物在 `release/`。原生模块保持 Node ABI（`npmRebuild: false`），必须在目标系统上打包：
+
+```sh
+pnpm electron:build:win   # Windows
+pnpm electron:build:mac   # macOS（当前机器的 arch）
+```
+
+或先提交 `main`，再打 `v*` tag 推送，由 CI 生成并挂到 [Releases](https://github.com/hezihua/dsh-desktop/releases)：
+
+```sh
+git tag -a v0.2.1 -m "v0.2.1"
+git push origin main
+git push origin v0.2.1
+```
+
+标签必须先在本地用 `git tag` 建好，再 `git push origin v0.2.1`。下次发版把 `v0.2.1` 换成新版本号即可。
 
 ## 结构
 
