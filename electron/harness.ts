@@ -78,7 +78,8 @@ export async function isDshSurface(url: string): Promise<boolean> {
 		return (
 			text.includes('DeepSeek Harness') ||
 			text.includes('__ModuleLoader__') ||
-			text.includes('__DSH_BOOT__')
+			text.includes('__DSH_BOOT__') ||
+			text.includes('dsh web authentication required')
 		)
 	} catch {
 		return false

@@ -5,14 +5,14 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 
-/** Harness 官方 engines：^22.19.0 || >=24.0.0 */
+/** Harness 官方 engines：>=24.9.0（@deepseek-ai/dsh 0.2.2-rc.2） */
 export function isSupportedNodeVersion(version: string): boolean {
 	const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim())
 	if (!match) return false
 	const major = Number(match[1])
 	const minor = Number(match[2])
-	if (major >= 24) return true
-	return major === 22 && minor >= 19
+	if (major > 24) return true
+	return major === 24 && minor >= 9
 }
 
 export type NodeRuntime = {
@@ -88,7 +88,7 @@ export async function resolveNodeRuntime(packaged: boolean): Promise<NodeRuntime
 		}
 		const version = await readNodeVersion(override)
 		if (!version || !isSupportedNodeVersion(version)) {
-			throw new Error(`DSH_NODE_PATH 的 Node 版本过低（${version ?? '未知'}），需要 22.19+ 或 24+`)
+			throw new Error(`DSH_NODE_PATH 的 Node 版本过低（${version ?? '未知'}），需要 24.9+`)
 		}
 		return { executable: override, version, source: 'override', runAsElectronNode: false }
 	}
@@ -140,7 +140,7 @@ export async function resolveNodeRuntime(packaged: boolean): Promise<NodeRuntime
 	}
 
 	throw new Error(
-		`DeepSeek Harness 需要 Node.js 22.19+ 或 24+。未找到安装包内的 Node，Electron 内置为 ${electronNode}，也没有合格的系统 Node。`,
+		`DeepSeek Harness 需要 Node.js 24.9+。未找到安装包内的 Node，Electron 内置为 ${electronNode}，也没有合格的系统 Node。`,
 	)
 }
 

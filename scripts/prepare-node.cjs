@@ -10,7 +10,7 @@ const { join } = require('node:path')
 const https = require('node:https')
 const http = require('node:http')
 
-const NODE_VERSION = process.env.DSH_BUNDLE_NODE_VERSION || '22.22.0'
+const NODE_VERSION = process.env.DSH_BUNDLE_NODE_VERSION || '24.22.3'
 const root = join(__dirname, '..')
 const destDir = join(root, 'resources', 'node')
 

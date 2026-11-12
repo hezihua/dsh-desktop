@@ -9,7 +9,7 @@ Electron 桌面壳，嵌入官方 [`@deepseek-ai/dsh`](https://www.npmjs.com/pac
 - [macOS Intel](https://github.com/hezihua/dsh-desktop/releases/latest/download/dsh-desktop-darwin-x64.dmg)
 - [全部版本](https://github.com/hezihua/dsh-desktop/releases)
 
-安装包由 GitHub Actions 分别在 Windows / macOS 上构建，内含完整 `@deepseek-ai/dsh` 和一份 Node 22。没装 Node 也能双击启动。关闭窗口会进托盘，引擎继续跑；托盘菜单里退出才会结束进程。
+安装包由 GitHub Actions 分别在 Windows / macOS 上构建，内含完整 `@deepseek-ai/dsh` 和一份 Node 24。没装 Node 也能双击启动。关闭窗口会进托盘，引擎继续跑；托盘菜单里退出才会结束进程。
 
 macOS 安装包未签名。若提示「无法打开 / 已损坏」，在终端执行：
 
@@ -19,7 +19,7 @@ xattr -dr com.apple.quarantine "/Applications/dsh-desktop.app"
 
 ## 要求
 
-- **开发**：Node.js **22.19+** 或 **24+**
+- **开发**：Node.js **24.9+**
 - **安装包**：自带 Node，不依赖本机环境
 - 本机需能解析 npm 上的 `@deepseek-ai/dsh`（仅从源码构建时）
 
