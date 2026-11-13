@@ -9,6 +9,7 @@
   },
   "scripts": {
     "electron:dev": "node scripts/with-electron-libs.cjs vite --config vite.config.electron.ts",
+    "fixbug:dev": "pnpm --filter @infini/fixbug dev --port 3000 --hostname 127.0.0.1",
     "build": "tsc --noEmit && tsc --noEmit -p tsconfig.electron.json && vite build --config vite.config.electron.ts",
     "prepare-node": "node scripts/prepare-node.cjs",
     "electron:build": "pnpm prepare-node && pnpm build && electron-builder -p never",

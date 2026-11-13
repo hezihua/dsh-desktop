@@ -26,6 +26,12 @@ export default defineConfig({
           reload()
         },
       },
+      {
+        entry: 'electron/harness-preload.ts',
+        onstart({ reload }) {
+          reload()
+        },
+      },
     ]),
   ],
 })

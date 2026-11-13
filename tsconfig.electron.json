@@ -11,5 +11,5 @@
     "esModuleInterop": true,
     "isolatedModules": true
   },
-  "include": ["electron/**/*.ts"]
+  "include": ["electron/**/*.ts", "shared/**/*.ts"]
 }

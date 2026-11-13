@@ -11,6 +11,17 @@ type UpdateState =
 
 type HarnessPhase = 'starting' | 'ready' | 'error'
 
+type DesktopAgent = {
+	id: string
+	label: string
+	description: string
+	uiShell: 'harness' | 'split'
+	available: boolean
+	unavailableReason?: string
+	appUrl: string | null
+	appUrlEnv?: string
+}
+
 export function App() {
 	const [harnessPhase, setHarnessPhase] = useState<HarnessPhase>('starting')
 	const [harnessMessage, setHarnessMessage] = useState('正在启动 DeepSeek Harness…')
@@ -19,6 +30,7 @@ export function App() {
 	const [logPath, setLogPath] = useState('')
 	const [logTail, setLogTail] = useState('')
 	const [safeMode, setSafeMode] = useState(false)
+	const [activeAgent, setActiveAgent] = useState<DesktopAgent | null>(null)
 	const [updateState, setUpdateState] = useState<UpdateState>({ phase: 'idle' })
 	const [showUpdateModal, setShowUpdateModal] = useState(false)
 
@@ -37,6 +49,7 @@ export function App() {
 			setLogPath(info.logPath)
 			setLogTail(info.logTail || '')
 			setSafeMode(Boolean(info.safeMode))
+			if (info.agent) setActiveAgent(info.agent)
 			if (info.phase === 'error' && info.error) {
 				setHarnessPhase('error')
 				setHarnessMessage(info.error)
@@ -53,6 +66,7 @@ export function App() {
 					if (status.logPath) setLogPath(status.logPath)
 					if (status.logTail !== undefined) setLogTail(status.logTail)
 					if (status.safeMode !== undefined) setSafeMode(status.safeMode)
+					if (status.agent) setActiveAgent(status.agent)
 				}),
 			)
 		}
@@ -124,7 +138,9 @@ export function App() {
 
 	return (
 		<>
-			<TitleBar />
+			<TitleBar title={activeAgent?.label || 'DeepSeek Harness'} />
+			<div className="workspace">
+				<div className="stage">
 			<div className="splash" hidden={harnessPhase === 'ready'}>
 				<div className="brand-mark" aria-hidden="true" />
 				<div className="brand">DeepSeek Harness</div>
@@ -158,6 +174,8 @@ export function App() {
 				) : null}
 				{harnessPhase === 'error' && logPath ? <p className="log">日志：{logPath}</p> : null}
 				{harnessPhase === 'error' && logTail ? <pre className="log-tail">{logTail}</pre> : null}
+			</div>
+				</div>
 			</div>
 
 			{showUpdateModal ? (

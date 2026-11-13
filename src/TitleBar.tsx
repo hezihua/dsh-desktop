@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-export function TitleBar() {
+export function TitleBar({ title = 'DeepSeek Harness' }: { title?: string }) {
 	const [maximized, setMaximized] = useState(false)
 
 	useEffect(() => {
@@ -13,7 +13,7 @@ export function TitleBar() {
 		<header className="titlebar">
 			<div className="titlebar-drag" onDoubleClick={() => void window.desktop?.maximize?.()}>
 				<span className="titlebar-mark" aria-hidden="true" />
-				<span className="titlebar-title">DeepSeek Harness</span>
+				<span className="titlebar-title">{title}</span>
 			</div>
 			<div className="titlebar-controls">
 				<button

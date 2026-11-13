@@ -1,5 +1,16 @@
 /// <reference types="vite/client" />
 
+type DesktopAgent = {
+  id: string
+  label: string
+  description: string
+  uiShell: 'harness' | 'split'
+  available: boolean
+  unavailableReason?: string
+  appUrl: string | null
+  appUrlEnv?: string
+}
+
 type HarnessStatus = {
   phase: 'starting' | 'ready' | 'error'
   message: string
@@ -7,6 +18,7 @@ type HarnessStatus = {
   logPath?: string
   logTail?: string
   safeMode?: boolean
+  agent?: DesktopAgent
 }
 
 interface DesktopInfo {
@@ -20,6 +32,8 @@ interface DesktopInfo {
   logTail: string
   dshHome: string
   safeMode: boolean
+  agents?: DesktopAgent[]
+  agent?: DesktopAgent | null
 }
 
 interface Window {
@@ -27,6 +41,7 @@ interface Window {
     getInfo: () => Promise<DesktopInfo>
     restartHarness: () => Promise<{ ok: boolean }>
     restartSafe?: () => Promise<{ ok: boolean }>
+    selectAgent?: (agentId: string) => Promise<{ ok: boolean; message?: string }>
     openLog?: () => Promise<{ ok: boolean; path: string }>
     setOverlay?: (visible: boolean) => Promise<void>
     minimize?: () => Promise<void>

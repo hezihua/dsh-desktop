@@ -16,6 +16,10 @@
       "from": "resources/node",
       "to": "node",
       "filter": ["node", "node.exe"]
+    },
+    {
+      "from": "agents",
+      "to": "agents"
     }
   ],
   "directories": {

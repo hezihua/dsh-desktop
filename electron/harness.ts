@@ -23,6 +23,10 @@ export type HarnessStartOptions = {
 	packaged: boolean
 	attach?: boolean
 	dshHome?: string
+	/** 官方 profile 名。公司智能体用 web，再叠 patches。 */
+	profile?: string
+	patches?: string[]
+	logFileName?: string
 	onUnexpectedExit?: (code: number | null, signal: NodeJS.Signals | null) => void
 }
 
@@ -151,7 +155,7 @@ export class HarnessServer {
 			if (await isDshSurface(url)) {
 				this.url = url
 				this.owned = false
-				this.logPath = join(this.options.logDir, HARNESS_LOG_FILENAME)
+				this.logPath = join(this.options.logDir, this.options.logFileName || HARNESS_LOG_FILENAME)
 				log.info(`附着到已有 Harness：${url}`)
 				return url
 			}
@@ -170,7 +174,7 @@ export class HarnessServer {
 		const runtime = await resolveNodeRuntime(this.options.packaged)
 		this.url = ''
 		this.owned = true
-		this.logPath = join(this.options.logDir, HARNESS_LOG_FILENAME)
+		this.logPath = join(this.options.logDir, this.options.logFileName || HARNESS_LOG_FILENAME)
 
 		mkdirSync(this.options.logDir, { recursive: true })
 		if (existsSync(this.logPath)) {
@@ -184,7 +188,23 @@ export class HarnessServer {
 		}
 		this.logStream = createWriteStream(this.logPath, { flags: 'a' })
 
-		const args = ['--expose-internals', entry, 'web', '--no-open', '--host', HARNESS_HOST, '--port', '0']
+		const profile = this.options.profile?.trim() || 'web'
+		if (profile.toLowerCase() === 'desktop') {
+			throw new Error('profile「desktop」由壳保留，请改用 web profile 加补丁')
+		}
+		const patches = this.options.patches ?? []
+		const args = [
+			'--expose-internals',
+			entry,
+			'--profile',
+			profile,
+			...patches.flatMap((patch) => ['--patch', patch]),
+			'--no-open',
+			'--host',
+			HARNESS_HOST,
+			'--port',
+			'0',
+		]
 
 		const env: NodeJS.ProcessEnv = { ...process.env }
 		delete env.ELECTRON_RUN_AS_NODE
@@ -202,6 +222,8 @@ export class HarnessServer {
 			source: runtime.source,
 			runAsElectronNode: runtime.runAsElectronNode,
 			entry,
+			profile,
+			patches,
 			dshHome: env.DSH_HOME ?? join(homedir(), '.dsh'),
 		})
 

@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0f18;
+  --fg: #e2e8f0;
+  --background: var(--bg);
+  --foreground: var(--fg);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Standalone fixbug: same monitor composer capsule as desktop embed */
+.monitor-composer {
+  padding: 0;
+}
+
+.composer-capsule {
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 22px;
+  background: rgb(0 0 0 / 0.35);
+  padding: 12px 14px 10px;
+  transition: border-color 0.15s ease;
+}
+
+.composer-capsule:focus-within {
+  border-color: rgb(45 212 191 / 0.35);
+}
+
+.composer-capsule__input {
+  display: block;
+  width: 100%;
+  min-height: 22px;
+  max-height: 140px;
+  resize: none;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.composer-capsule__input::placeholder {
+  color: #64748b;
+}
+
+.composer-capsule__input:focus {
+  outline: none;
+}
+
+.composer-capsule__bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 10px;
+  min-height: 32px;
+}
+
+.composer-capsule__send {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #2a303c;
+  color: #6b7280;
+  cursor: not-allowed;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.composer-capsule__send--ready {
+  background: rgb(45 212 191 / 0.9);
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.composer-capsule__send--ready:hover {
+  background: rgb(45 212 191);
+  transform: scale(1.04);
+}
+
+.composer-capsule__send--stop {
+  background: #3d2828;
+  color: #f87171;
+  cursor: pointer;
+}
+
+.composer-capsule__send--stop:hover {
+  background: #4a3030;
+  color: #fca5a5;
+  transform: scale(1.04);
+}

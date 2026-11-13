@@ -1,0 +1,14 @@
+{
+  "defaultAgentId": "infini-bugfix",
+  "agents": [
+    {
+      "id": "infini-bugfix",
+      "label": "Infini Bugfix",
+      "description": "运维智能体。左侧保留官方导航，对话框位置展示运维页面。",
+      "profile": "web",
+      "uiShell": "split",
+      "patches": ["patches/infini-bugfix.yml"],
+      "appUrlEnv": "SERVER_AGENT_APP_URL"
+    }
+  ]
+}

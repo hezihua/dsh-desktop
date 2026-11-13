@@ -1,5 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+export type DesktopAgent = {
+	id: string
+	label: string
+	description: string
+	uiShell: 'harness' | 'split'
+	available: boolean
+	unavailableReason?: string
+	appUrl: string | null
+	appUrlEnv?: string
+}
+
 export type HarnessStatus = {
 	phase: 'starting' | 'ready' | 'error'
 	message: string
@@ -7,12 +18,15 @@ export type HarnessStatus = {
 	logPath?: string
 	logTail?: string
 	safeMode?: boolean
+	agent?: DesktopAgent
 }
 
 contextBridge.exposeInMainWorld('desktop', {
 	getInfo: () => ipcRenderer.invoke('desktop:get-info'),
 	restartHarness: () => ipcRenderer.invoke('desktop:restart-harness'),
 	restartSafe: () => ipcRenderer.invoke('desktop:restart-safe'),
+	selectAgent: (agentId: string) =>
+		ipcRenderer.invoke('desktop:select-agent', agentId) as Promise<{ ok: boolean; message?: string }>,
 	openLog: () => ipcRenderer.invoke('desktop:open-log'),
 	setOverlay: (visible: boolean) => ipcRenderer.invoke('desktop:set-overlay', visible),
 	minimize: () => ipcRenderer.invoke('window:minimize'),
